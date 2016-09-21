@@ -3,45 +3,37 @@
 //
 
 #include "Matrix.h"
-Matrix Matrix::Row(SizeT index) const
+Linear::BlockView Linear::Matrix::Row(SizeT index)
 {
     if(index >= row_count)
     {
        throw OutOfBoundException{};
     }
-    Matrix result_m{1, col_count};
-    for(SizeT ci=0; ci < result_m.col_count; ci++)
-    {
-        result_m.Entry(0, ci) = Entry(index, ci);
-    }
+    return BlockView{*this, index, 0, 1, col_count};
 }
-Matrix Matrix::Col(SizeT index) const
+Linear::BlockView Linear::Matrix::Col(SizeT index)
 {
     if(index >= col_count)
     {
        throw OutOfBoundException{};
     }
-    Matrix result_m{row_count, 1};
-    for(SizeT ri=0; ri < result_m.row_count; ri++)
-    {
-        result_m.Entry(ri, 0) = Entry(ri, index);
-    }
+    return BlockView(*this, 0, index, row_count, 1);
 }
-Matrix Matrix::operator*(Matrix const &mr) const
+Linear::Matrix Linear::Matrix::operator*(const MatrixView &mr) const
 {
     const Matrix& ml = *this;
-    if(ml.col_count != mr.row_count)
+    if(ml.ColCount() != mr.RowCount())
     {
         throw DimException{};
     }
-    Matrix result_m{ml.row_count, mr.col_count};
+    Matrix result_m{ml.RowCount(), mr.ColCount()};
 
-    for(SizeT ri=0; ri < result_m.row_count; ri ++ )
+    for(SizeT ri=0; ri < result_m.RowCount(); ri ++ )
     {
-        for(SizeT ci=0; ci < result_m.col_count; ci++)
+        for(SizeT ci=0; ci < result_m.ColCount(); ci++)
         {
             EntryT dot_product = 0;
-            for(SizeT i=0; i < ml.col_count; i++)
+            for(SizeT i=0; i < ml.ColCount(); i++)
             {
                 dot_product += ml.Entry(ri, i) * mr.Entry(i, ci);
             }
@@ -51,7 +43,90 @@ Matrix Matrix::operator*(Matrix const &mr) const
 
     return std::move(result_m);
 }
-bool Matrix::operator==(Matrix const &mr) const
+
+Linear::Matrix Linear::Matrix::operator+(const MatrixView &mr) const
+{
+    const Matrix& ml = *this;
+    if(ml.RowCount() != mr.RowCount() || ml.ColCount() != mr.ColCount())
+    {
+        throw DimException{};
+    }
+    Matrix result_m{ml.RowCount(), ml.ColCount()};
+
+    for(SizeT ri=0; ri < result_m.RowCount(); ri ++ )
+    {
+        for(SizeT ci=0; ci < result_m.ColCount(); ci++)
+        {
+            result_m.Entry(ri, ci) = ml.Entry(ri, ci) + mr.Entry(ri, ci);
+        }
+    }
+
+    return std::move(result_m);
+}
+
+Linear::Matrix::Matrix(std::initializer_list<std::initializer_list<EntryT>> lst):
+    MatrixView(lst.size(), lst.begin()->size()),
+    entries(row_count*col_count)
+{
+        SizeT ri=0;
+        for(const auto &col:lst)
+        {
+            SizeT ci=0;
+            for(const auto &v:col)
+            {
+                Entry(ri, ci) = v;
+                ci+=1;
+            }
+            if( ci != col_count)
+            {
+                throw DimException{};
+            }
+            ri += 1;
+        }
+}
+Linear::Matrix::Matrix(const Linear::MatrixView &mv):
+    MatrixView(mv.RowCount(), mv.ColCount()), entries(mv.RowCount()*mv.ColCount())
+{
+    for(SizeT ri=0; ri < this->RowCount(); ri++)
+    {
+        for(SizeT ci=0; ci < this->ColCount(); ci++)
+        {
+            this->Entry(ri, ci) = mv.Entry(ri, ci);
+        }
+    }
+}
+
+std::ostream &Linear::operator<<(std::ostream &out, const MatrixView &m)
+{
+    out << "{\n";
+    for(SizeT ri=0; ri < m.RowCount(); ri++)
+    {
+        out << "{";
+        for(SizeT ci=0; ci < m.ColCount(); ci++)
+        {
+            out << m.Entry(ri, ci) << ",";
+        }
+        out << "}\n";
+    }
+    out << "}\n";
+}
+Linear::Matrix Linear::operator*(const ScalarT &s, const MatrixView &m)
+{
+    Matrix r_m(m.RowCount(), m.ColCount());
+    for(SizeT ri=0; ri < m.RowCount(); ri++)
+    {
+        for(SizeT ci=0; ci < m.ColCount(); ci++)
+        {
+            r_m.Entry(ri, ci) = m.Entry(ri, ci)*s;
+        }
+    }
+    return std::move(r_m);
+}
+Linear::Matrix Linear::operator*(const MatrixView &m, const ScalarT &s)
+{
+    return operator*(s, m);
+}
+bool Linear::MatrixView::operator==(const Linear::MatrixView &mr) const
 {
     if(this->RowCount() != mr.RowCount() or this->ColCount() != mr.ColCount())
     {
@@ -69,40 +144,19 @@ bool Matrix::operator==(Matrix const &mr) const
     }
     return true;
 }
-bool Matrix::operator!=(Matrix const &mr) const
+Linear::MatrixView &Linear::MatrixView::operator=(const Linear::MatrixView &mr)
 {
-    return !(*this == mr);
-}
-Matrix Matrix::operator+(Matrix const &mr) const
-{
-    const Matrix& ml = *this;
-    if(ml.RowCount() != mr.RowCount() || ml.ColCount() != mr.ColCount())
+    if(this->RowCount() != mr.RowCount() || this->ColCount() != mr.ColCount())
     {
         throw DimException{};
     }
-    Matrix result_m{ml.row_count, ml.col_count};
-
-    for(SizeT ri=0; ri < result_m.row_count; ri ++ )
+    for(SizeT ri=0; ri < this->RowCount(); ri++)
     {
-        for(SizeT ci=0; ci < result_m.col_count; ci++)
+        for(SizeT ci=0; ci < this->ColCount(); ci++)
         {
-            result_m.Entry(ri, ci) = ml.Entry(ri, ci) + mr.Entry(ri, ci);
+            this->Entry(ri, ci) = mr.Entry(ri, ci);
         }
     }
+    return *this;
+}
 
-    return std::move(result_m);
-}
-std::ostream &operator<<(std::ostream &out, const Matrix &m)
-{
-    out << "{\n";
-    for(SizeT ri=0; ri < m.RowCount(); ri++)
-    {
-        out << "{";
-        for(SizeT ci=0; ci < m.ColCount(); ci++)
-        {
-            out << m.Entry(ri, ci) << ",";
-        }
-        out << "}\n";
-    }
-    out << "}\n";
-}
